@@ -7,6 +7,7 @@ from business_calendar import Calendar
 
 class irsfunc():
 
+
     def __init__(self, assessmentdate):
         self.assessmentdate = assessmentdate  # 估值日，如'20190102'
         # 外汇交易中心公布的IRS利率曲线，短端点则用对应浮动利率的即期值，通过interestread（）函数获得
@@ -687,6 +688,8 @@ class irsfunc():
                     periody = 1
                 elif abs(period - 1827) < 5:
                     periody = 5
+                elif abs(period - 275) < 5:
+                    periody = 3/4
                 self.asset[code] = [
                     irstype,
                     valuedate,
@@ -704,6 +707,10 @@ class irsfunc():
         cal = Calendar()
         valuedic = {}
         value = 0
+        valuefr007s1y=0
+        valuefr007s5y=0
+        valuefr007s9m=0
+        valuelpr1y=0
         assessmentdate = datetime.datetime.strptime(
             self.assessmentdate, '%Y%m%d')  # 估值日
 
@@ -721,7 +728,7 @@ class irsfunc():
 
                 m = 0  # 对于每一个已经开始的利率互换，有且只有一个区间，它的即期利率要取收益率曲线上的最短点，远期利率要取历史值，必须单独处理这个特别的区间，处理之后令m=1
 
-                for i in range(4 * info[3]):  # 1年对应4个付息日，5年对应4*5个付息日
+                for i in range(int(4 * info[3])):  # 1年对应4个付息日，5年对应4*5个付息日
 
                     dayb = initialdate + \
                         relativedelta(months=3 * i)  # 每次付息区间的开始日
@@ -840,7 +847,10 @@ class irsfunc():
                         ispot2 = interest[ii2][4]
                         day1 = interest[ii1][0]
                         day2 = interest[ii2][0]
-                        ratio = (daye - day1).days / (day2 - day1).days
+                        if day1==day2:
+                            ratio=1
+                        else:
+                            ratio = (daye - day1).days / (day2 - day1).days
                         ispot = ispot1 + (ispot2 - ispot1) * ratio
                         deflator = math.exp(-ispot * daylast / 365)
                         lista = [dayb, daye, daye, ispot, 0, 0, daylast]
@@ -849,6 +859,8 @@ class irsfunc():
                         momeyfixall = facevalue * daycal / 365 * info[4]
                         listb = [dayb, daye, momeyflall, momeyfixall, deflator]
                         listbb.append(listb)
+
+
                 if output == 0:
                     print('>>>>', code, '的计息区间现金流')
                     for x in listaa:
@@ -932,6 +944,8 @@ class irsfunc():
                             momeyfix = facevalue * daycal / 365 * info[4]
                             listb = [dayb, daye, momeyfl, momeyfix, deflator]
                             listbb.append(listb)
+
+
                 if output == 0:
                     print('>>>>', code, '的计息区间现金流')
                     for x in listaa:
@@ -953,15 +967,34 @@ class irsfunc():
             valuedic[code] = [v, pfloat * info[2], -
                               pfix * info[2]]  # 单笔的NPV，浮动端，固定端
             value += v  # 所有IRS的NPV
+            if info[0]=='LPR1Y':
+                valuelpr1y+=v
+            elif info[0]=='FR007':
+                if info[3]==3/4:
+                    valuefr007s9m += v
+                elif info[3]==1:
+                    valuefr007s1y += v
+                elif info[3]==5:
+                    valuefr007s5y += v
 
-        if output == 0:
+
+
+
+
+
+
+        if output == 11:
             print('------所有持仓IRS的估值------')
-            print(value)
+            print('所有:',value)
+            print('fr007s9m:',valuefr007s9m)
+            print('fr007s1y:',valuefr007s1y)
+            print('fr007s5y:',valuefr007s5y)
+            print('lpr1y:',valuelpr1y)
             print('------每个IRS的估值[NPV，浮动端，固定端]------')
             for x, y in valuedic.items():
                 print(x, ':', y)
 
-        return [value, valuedic]
+        return [value, valuedic,[valuefr007s9m,valuefr007s1y,valuefr007s5y,valuelpr1y]]
 
     def dvbp(self, output=0):
         change1 = [
@@ -1008,6 +1041,10 @@ class irsfunc():
         self.interestline(change2)
         mdown = self.valuecal(1)
         dvbpall = mup[0] - mdown[0]
+        dvbpfr007s9m=mup[2][0] - mdown[2][0]
+        dvbpfr007s1y = mup[2][1] - mdown[2][1]
+        dvbpfr007s5y = mup[2][2] - mdown[2][2]
+        dvbplpr1y = mup[2][3] - mdown[2][3]
         dvbplist = {}
         for x in self.asset.keys():
 
@@ -1019,7 +1056,12 @@ class irsfunc():
 
         if output == 0:
             print('------整个组合的DV01------')
-            print(dvbpall)
+
+            print('所有', dvbpall)
+            print('fr007s9m', dvbpfr007s9m)
+            print('fr007s1y', dvbpfr007s1y)
+            print('fr007s5y', dvbpfr007s5y)
+            print('lpr1y', dvbplpr1y)
             print('------每个IRS的DV01[NPV，浮动端，固定端]------')
             for x, y in dvbplist.items():
                 print(x, y)
@@ -1043,7 +1085,11 @@ class irsfunc():
 
         print('-------------1平行上移250BP-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有',value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1064,7 +1110,11 @@ class irsfunc():
 
         print('-------------2平行下移250BP-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有', value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1088,7 +1138,11 @@ class irsfunc():
 
         print('-------------3变陡峭-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有', value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1115,7 +1169,11 @@ class irsfunc():
 
         print('-------------4变平缓-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有', value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1139,7 +1197,11 @@ class irsfunc():
 
         print('-------------5短期利率向上移动-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有', value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1162,7 +1224,11 @@ class irsfunc():
 
         print('-------------6短期利率向下移动-------------')
         print('市场总价值')
-        print(value[0])
+        print('所有', value[0])
+        print('fr007s9m', value[2][0])
+        print('fr007s1y', value[2][1])
+        print('fr007s5y', value[2][2])
+        print('lpr1y', value[2][3])
         print('各个IRS')
         for ii, kk in value[1].items():
             print(ii, ':', kk)
@@ -1177,7 +1243,7 @@ class irsfunc():
         self.interestline(change)
 
 
-b = irsfunc('20200401')
+b = irsfunc('20200630')
 """
 b.interestline123('C:/Users/zyzse/Desktop/interestaddress.xlsx')
 b.irsput('C:/Users/zyzse/Desktop/irs交易查询与维护.xlsx')
@@ -1208,7 +1274,7 @@ for x, y in b.interest.items():
     for a, c in y.items():
         print(a, c)
 
-m = b.valuecal()
+m = b.valuecal(11)
 
 b.dvbp()
 print('------持有的IRS信息------')
